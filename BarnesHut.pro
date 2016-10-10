@@ -2,6 +2,8 @@ QT += core
 QT -= gui
 
 CONFIG += c++11
+#QMAKE_CXXFLAGS -= -O2
+#QMAKE_CXXFLAGS += -O3
 
 TARGET = BarnesHut
 CONFIG += console
@@ -15,4 +17,7 @@ HEADERS += \
     chargecloud.h \
     vectortemplate.h \
     mathutility.h \
-    matrixtemplate.h
+    matrixtemplate.h \
+    binarytree.h
+
+INCLUDEPATH += C:/boost_1_61_0
