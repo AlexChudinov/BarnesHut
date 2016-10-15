@@ -33,12 +33,13 @@ template<class T> class binary_tree_node
     /**
      * Creates a new node decomposing a type T1 value
      */
-    template<class FunObj, class T1>
-    binary_tree_node(const FunObj& fun, const T1& t)
+    template<class split_fun, class T1>
+    binary_tree_node(split_fun fun, const T1& t)
         :
           leftSon(nullptr), rightSon(nullptr)
     {
         typedef pair<T1, node*> pair;
+        typedef triple<T, T1> triple;
 
         //Push first vector to a stack
         stack<pair> dfsStack;
@@ -51,7 +52,7 @@ template<class T> class binary_tree_node
             dfsStack.pop();
 
             //Split inputed data and returns a node value
-            triple<T, T1> nodeData = fun(t);
+            triple nodeData = fun(t);
             pnode->data = nodeData.first;
 
             if(!nodeData.second.first.empty())

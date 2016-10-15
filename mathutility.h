@@ -67,12 +67,6 @@ template<class T> struct in_place_div
 template<class T> struct set_val
 { inline T& operator()(T& x, T const& y) const { return x = y; } };
 
-/**
- * Multiplication
- */
-template<class T> struct mul
-{ inline T operator() (const T& x, const T& y) const { return x*y; } };
-
 }
 
 #endif // MATHUTILITY_H

@@ -18,6 +18,7 @@ HEADERS += \
     vectortemplate.h \
     mathutility.h \
     matrixtemplate.h \
-    binarytree.h
+    binarytree.h \
+    array_operations.h
 
 INCLUDEPATH += C:/boost_1_61_0

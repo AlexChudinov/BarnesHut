@@ -17,8 +17,8 @@ class ChargeCloud;
 template <class Float> struct charge_approximation
 {
     typedef Float charge_type;
-    typedef math::Vector<Float, 3> position_type;
-    typedef math::Matrix<Float, 3> matrix3D_type;
+    typedef math::vector_c<Float, 3> position_type;
+    typedef math::matrix_c<Float, 3> matrix3D_type;
 
     charge_type total_charge;
     position_type central_point;
@@ -30,13 +30,14 @@ template <class Float> struct charge_approximation
         :
           total_charge(cloud.total_charge()),
           central_point(cloud.chargeCenter()),
-          max_dispersion(cloud.maxDispersion())
+          max_dispersion(cloud.maxDispersion(central_point))
     {}
 
 };
 
 /*!
  * Distribution of charges in space
+ * using CGSE unit system
  */
 template <class Float>
 class ChargeCloud
@@ -48,6 +49,7 @@ class ChargeCloud
     typedef std::vector<position_type> vector_of_positions_type;
     typedef data_structs::triple<charge_approximation<Float>, ChargeCloud> triple;
     typedef std::pair<ChargeCloud,ChargeCloud> pair;
+    typedef position_type force_type;
 
     vector_of_charges_type m_Charges;
     vector_of_positions_type m_Positions;
@@ -62,6 +64,15 @@ public:
     (
             const vector_of_charges_type& charges,
             const vector_of_positions_type& positions)
+        :
+          m_Charges(charges),
+          m_Positions(positions)
+    { assert(m_Charges.size() == m_Positions.size()); }
+
+    ChargeCloud
+    (
+            vector_of_charges_type&& charges,
+            vector_of_positions_type&& positions)
         :
           m_Charges(charges),
           m_Positions(positions)
@@ -115,21 +126,36 @@ public:
         return result;
     }
 
-    barnes_hut_tree create_barnes_hut_tree() const
+    /**
+     * Creates barnes_hut_tree for the cloud, until
+     * achieving the limited resudial dispersion value in clouds
+     */
+    barnes_hut_tree create_barnes_hut_tree
+    (
+            const Float& min_dispersion_cm
+    ) const
     {
         struct create_tree_node_data
         {
+            const Float& min_dispersion_;
+
+            inline create_tree_node_data(const Float& min_dispersion)
+                : min_dispersion_(min_dispersion){}
+
             inline triple operator()
                     (const ChargeCloud& cloud) const
             {
                 triple result;
                 result.first = charge_approximation<Float>(cloud);
-                result.second = cloud.split();
+                Float disp = ::sqrt(abs(result.first.max_dispersion));
+                if(disp <= min_dispersion_)
+                    result.second = pair(ChargeCloud(),ChargeCloud());
+                else result.second = cloud.split();
                 return result;
             }
         };
 
-        return barnes_hut_tree(create_tree_node_data(), *this);
+        return barnes_hut_tree(create_tree_node_data(min_dispersion_cm), *this);
     }
 
     /*!

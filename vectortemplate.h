@@ -1,8 +1,7 @@
 #ifndef VECTORTEMPLATE_H
 #define VECTORTEMPLATE_H
 
-#include <iostream>
-
+#include <functional>
 #include <assert.h>
 #include <sstream>
 #include <cmath>
@@ -12,137 +11,15 @@
 /*!
  * Math vector of any size
  */
+#include <array_operations.h>
 #include "mathutility.h"
 
 namespace math {
 
-using std::size_t;
-
 /**
  *Math vector implementation
  */
-template<class T, std::size_t N> struct vector_c;
-
-/**
- * Creates elementwise and folding operations with a vector
- */
-template<class T, size_t N>
-struct vector_c_op
-{
-    template<size_t M> using vector = vector_c<T, M>;
-    using type = vector_c_op<T, N>;
-    using prior_type =  vector_c_op<T, N-1>;
-
-    /**
-     * Applies operator op from the left (from the first vector element)
-     */
-    template<class op, size_t M>
-    inline void l_apply (op Op, vector<M>& v) const
-    {
-        static_assert(M >= N, "Vector index is out of range.");
-        prior_type().l_apply(Op, v);
-        Op(v[N - 1]);
-    }
-
-    template<class op, size_t M>
-    inline void apply (op Op, vector<M>& v) const
-    {
-        static_assert(M >= N, "Vector index is out of range.");
-        Op(v[N - 1]);
-        prior_type().apply(Op, v);
-    }
-
-    template<class op, size_t M>
-    inline void apply (op Op, vector<M>& vl, const vector<M>& vr) const
-    {
-        static_assert(M >= N, "Vector index is out of range.");
-        Op(vl[N - 1], vr[N - 1]);
-        prior_type().apply(Op, vl, vr);
-    }
-
-    /**
-     * Applies a one value to an every vector element using binary op
-     */
-    template<class op, size_t M>
-    inline void apply (op Op, vector<M>& vl, const T& val) const
-    {
-        static_assert(M >= N, "Vector index is out of range.");
-        Op(vl[N - 1], val);
-        prior_type().apply(Op, vl, val);
-    }
-
-    /**
-     * Folds all elements
-     */
-    template<class add, class mul, size_t M> inline
-    T fold (add Add, mul Mul, const vector<M>& vl, const vector<M>& vr) const
-    {
-        static_assert(M >= N, "Vector index is out of range.");
-        T z = Mul(vl[N-1], vr[N-1]);
-        return Add(z, prior_type().fold(Add, Mul, vl, vr));
-    }
-
-    /**
-     * Summation trough elements of a vector
-     */
-    template<class add, size_t M> inline
-    T sum (add Add, const vector<M>& v) const
-    {
-        static_assert(M >= N, "Vector index is out of range.");
-        T z = v[N-1];
-        return Add(z, prior_type().sum(Add, v));
-    }
-};
-
-template<class T>
-struct vector_c_op<T, 1>
-{
-    template<size_t N> using vector = vector_c<T, N>;
-
-    template<class op, size_t N>
-    inline void l_apply (op Op, vector<N>& v) const
-    {
-        static_assert(N != 0, "Vector index is out of range.");
-        Op(v[0]);
-    }
-
-    template<class op, size_t N>
-    inline void apply (op Op, vector<N>& v) const
-    {
-        static_assert(N != 0, "Vector index is out of range.");
-        Op(v[0]);
-    }
-
-    template<class op, size_t N>
-    inline void apply (op Op, vector<N>& vl, const vector<N>& vr) const
-    {
-        static_assert(N != 0, "Vector index is out of range.");
-        Op(vl[0], vr[0]);
-    }
-
-    template<class op, size_t N>
-    void apply (op Op, vector<N>& vl, const T& val) const
-    {
-        static_assert(N != 0, "Vector index is out of range.");
-        Op(vl[0], val);
-    }
-
-    template<class add, class mul, size_t N> inline
-    T fold (add /*Add*/, mul Mul, const vector<N>& vl, const vector<N>& vr) const
-    {
-        static_assert(N != 0, "Vector index is out of range.");
-        return Mul(vl[0], vr[0]);
-    }
-
-    template<class add, size_t N> inline
-    T sum (add /*Add*/, const vector<N>& v)
-    {
-        static_assert(N != 0, "Vector index is out of range.");
-        return v[0];
-    }
-};
-
-template<class T, std::size_t N> struct vector_c : std::array<T, N>
+template<class T, size_t N> struct vector_c : std::array<T, N>
 {
     using type = vector_c<T, N>;
 
@@ -173,17 +50,26 @@ template<class T, std::size_t N> struct vector_c : std::array<T, N>
 
     explicit vector_c(const T& val)
     {
-        vector_c_op<T, N>().apply(set_val<T>(), *this, val);
+        struct set_val{
+            const T& val_;
+            inline set_val(const T& val):val_(val){}
+            inline void operator()(T& x) const { x = val_; }
+        };
+
+        math::array_operations<type, type, N - 1> op;
+        op.umap(set_val(val), *this);
     }
 
     vector_c(const type& v)
     {
-        vector_c_op<T, N>().apply(set_val<T>(), *this, v);
+        math::array_operations<type, type, N - 1> op;
+        op.bmap(set_val<T>(), *this, v);
     }
 
-    vector_c& operator = (const type& v)
+    vector_c& operator=(const type& v)
     {
-        vector_c_op<T, N>().apply(set_val<T>(), *this, v);
+        math::array_operations<type, type, N - 1> op;
+        op.bmap(set_val<T>(), *this, v);
         return *this;
     }
 
@@ -195,7 +81,8 @@ template<class T, std::size_t N> struct vector_c : std::array<T, N>
         using set_list
             = set_list<list_iterator>;
         list_iterator it = list.begin();
-        vector_c_op<T, N>().l_apply(set_list(it), *this);
+        math::array_operations<type, type, N - 1> op;
+        op.umap(set_list(it), *this);
     }
 };
 
@@ -205,7 +92,10 @@ template<class T, std::size_t N> struct vector_c : std::array<T, N>
 template<class T, size_t N> inline
 vector_c<T, N>& operator += (vector_c<T, N>& v, const T& h)
 {
-    vector_c_op<T, N>().apply(in_place_plus<T>(), v, h);
+    DEF_OPERATION_WITH_VAL(T, +=)
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    op.umap(operation(h), v);
     return v;
 }
 
@@ -215,7 +105,9 @@ vector_c<T, N>& operator += (vector_c<T, N>& v, const T& h)
 template<class T, size_t N> inline
 vector_c<T, N>& operator += (vector_c<T, N>& vl, const vector_c<T, N>& vr)
 {
-    vector_c_op<T, N>().apply(in_place_plus<T>(), vl, vr);
+    using type =  typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    op.bmap(in_place_plus<T>(), vl, vr);
     return vl;
 }
 
@@ -232,7 +124,9 @@ vector_c<T, N> operator  + (const vector_c<T, N>& vl, const vector_c<T, N>& vr)
 template<class T, size_t N> inline
 vector_c<T, N>& operator -= (vector_c<T, N>& vl, const vector_c<T, N>& vr)
 {
-    vector_c_op<T, N>().apply(in_place_sub<T>(), vl, vr);
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    op.bmap(in_place_sub<T>(), vl, vr);
     return vl;
 }
 
@@ -241,10 +135,7 @@ vector_c<T, N>& operator -= (vector_c<T, N>& vl, const vector_c<T, N>& vr)
  */
 template<class T, size_t N> inline
 vector_c<T, N> operator - (const vector_c<T, N>& vl, const vector_c<T, N>& vr)
-{
-    vector_c<T, N> result(vl);
-    return result -= vr;
-}
+{ vector_c<T, N> result(vl); return result -= vr; }
 
 /**
  * Vector inplace multiplication by a number
@@ -252,7 +143,10 @@ vector_c<T, N> operator - (const vector_c<T, N>& vl, const vector_c<T, N>& vr)
 template<class T, size_t N> inline
 vector_c<T, N>& operator *= (vector_c<T, N>& vl, const T& h)
 {
-    vector_c_op<T, N>().apply(in_place_mul<T>(), vl, h);
+    DEF_OPERATION_WITH_VAL(T, *=)
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    op.umap(operation(h), vl);
     return vl;
 }
 
@@ -274,7 +168,10 @@ vector_c<T, N> operator * (const T& h, const vector_c<T, N>& vl)
 template<class T, size_t N> inline
 vector_c<T, N>& operator /= (vector_c<T, N>& v, const T& h)
 {
-    vector_c_op<T, N>().apply(in_place_div<T>(), v, h);
+    DEF_OPERATION_WITH_VAL(T, /=)
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    op.umap(operation(h), v);
     return v;
 }
 /**
@@ -287,22 +184,15 @@ vector_c<T, N> operator / (const vector_c<T, N>& v, const T& h)
 /**
  * Vector dot multiplication
  */
-#include <iostream>
-#include <type_traits>
 template<class T, size_t N> inline
 T operator * (const vector_c<T, N>& vl, const vector_c<T, N>& vr)
-{ return vector_c_op<T, N>().fold(in_place_plus<T>(), mul<T>(), vl, vr); }
-
-/**
- * Vector dot multiplication functor
- */
-template<class T, size_t N>
-struct vector_dot_mul
 {
-    using vector = vector_c<T, N>;
-    inline T operator () (const vector& v1, const vector& v2) const
-    { return v1*v2; }
-};
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    T res = 0.0;
+    op.bfold(math::in_place_plus<T>(),std::multiplies<T>(),res, vl, vr);
+    return res;
+}
 
 /**
  * Vector printing
@@ -310,10 +200,11 @@ struct vector_dot_mul
 template<class T, size_t N> inline
 std::ostream& operator << (std::ostream& out, const vector_c<T, N>& v)
 {
-    using vector = vector_c<T, N>;
-    using print_val = typename vector::print_val;
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    using print_val = typename type::print_val;
     out << "( ";
-    vector_c_op<T, N>().l_apply(print_val(out),const_cast<vector&>(v));
+    op.umap(print_val(out),const_cast<type&>(v));
     out << ")";
     return out;
 }
@@ -329,14 +220,26 @@ inline T abs(const vector_c<T, N>& v){ return ::sqrt(v*v); }
  */
 template<class T, size_t N>
 inline T sum(const vector_c<T, N>& v)
-{ return vector_c_op<T, N>().sum(in_place_plus<T>(), v); }
+{
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    T res = 0.0;
+    op.ufold(in_place_plus<T>(), res, v);
+    return res;
+}
 
 /**
  * Product of all vector elements
  */
 template<class T, size_t N>
 inline T prod(const vector_c<T, N>& v)
-{ return vector_c_op<T, N>().sum(in_place_mul<T>(), v); }
+{
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    T res = 1.0;
+    op.ufold(in_place_mul<T>(), res, v);
+    return res;
+}
 
 }
 
