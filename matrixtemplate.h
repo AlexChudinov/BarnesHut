@@ -14,9 +14,11 @@ namespace math {
 using std::pair;
 using std::vector;
 
-template<class T, size_t m, size_t n> class matrix_c;
-template<class T, size_t m, size_t n> class proxy_matrix_row;
-template<class T, size_t m, size_t n> class proxy_matrix_col;
+template<class T, size_t m, size_t n> struct matrix_c;
+template<class T, size_t m, size_t n> struct proxy_matrix_row;
+template<class T, size_t m, size_t n> struct const_proxy_matrix_row;
+template<class T, size_t m, size_t n> struct proxy_matrix_col;
+template<class T, size_t m, size_t n> struct const_proxy_matrix_col;
 
 template <class T, size_t m, size_t n>
 struct matrix_c : vector_c<vector_c<T, n>, m>
@@ -38,6 +40,10 @@ struct matrix_c : vector_c<vector_c<T, n>, m>
     inline proxy_matrix_col<T, m, n> column(size_t idx_col);
 
     inline proxy_matrix_row<T, m, n> row(size_t idx_row);
+
+    inline const_proxy_matrix_col<T, m, n> column(size_t idx_col) const;
+
+    inline const_proxy_matrix_row<T, m, n> row(size_t idx_row) const;
 };
 
 template<class T, size_t m, size_t n>
@@ -52,6 +58,23 @@ struct proxy_matrix_col
           A_(A), idx_col_(idx_col){}
 
     inline T& operator[](size_t idx_row){ return A_[idx_row][idx_col_]; }
+};
+
+template<class T, size_t m, size_t n>
+struct const_proxy_matrix_col
+{
+    using matrix = matrix_c<T, m, n>;
+    const matrix& A_;
+    size_t idx_col_;
+
+    inline const_proxy_matrix_col(const matrix& A, size_t idx_col)
+        :
+          A_(A), idx_col_(idx_col){}
+
+    inline const_proxy_matrix_col(const proxy_matrix_col<T, m, n>& col)
+        :
+          A_(col.A_), idx_col_(col.idx_col_){}
+
     inline const T& operator[](size_t idx_row) const
     { return A_[idx_row][idx_col_]; }
 };
@@ -60,6 +83,12 @@ template<class T, size_t m, size_t n>
 proxy_matrix_col<T, m, n> matrix_c<T, m, n>::column(size_t idx_col)
 {
     return proxy_matrix_col<T, m, n>(*this, idx_col);
+}
+
+template<class T, size_t m, size_t n>
+const_proxy_matrix_col<T, m, n> matrix_c<T, m, n>::column(size_t idx_col) const
+{
+    return const_proxy_matrix_col<T, m, n>(*this, idx_col);
 }
 
 template<class T, size_t m, size_t n>
@@ -74,6 +103,25 @@ struct proxy_matrix_row
           A_(A), idx_row_(idx_row){}
 
     inline T& operator[](size_t idx_col){ return A_[idx_row_][idx_col]; }
+};
+
+template<class T, size_t m, size_t n>
+struct const_proxy_matrix_row
+{
+    using matrix = matrix_c<T, m, n>;
+    const matrix& A_;
+    size_t idx_row_;
+
+    inline const_proxy_matrix_row(const matrix& A, size_t idx_row)
+        :
+          A_(A), idx_row_(idx_row)
+    {}
+
+    inline const_proxy_matrix_row(const proxy_matrix_row<T, m, n>& row)
+        :
+          A_(row.A_), idx_row_(row.idx_row_)
+    {}
+
     inline const T& operator[](size_t idx_col) const
     { return A_[idx_row_][idx_col]; }
 };
@@ -82,6 +130,45 @@ template<class T, size_t m, size_t n>
 proxy_matrix_row<T, m, n> matrix_c<T, m, n>::row(size_t idx_row)
 {
     return proxy_matrix_row<T, m, n>(*this, idx_row);
+}
+
+template<class T, size_t m, size_t n>
+const_proxy_matrix_row<T, m, n> matrix_c<T, m, n>::row(size_t idx_row) const
+{
+    return const_proxy_matrix_row<T, m, n>(*this, idx_row);
+}
+
+/**
+ * Folds a matrix row with a matrix column
+ */
+template<class T, size_t m, size_t k, size_t n>
+T operator *
+(
+        const_proxy_matrix_row<T, m, k>& row,
+        const_proxy_matrix_col<T, k, n>& col)
+{
+    using row_vector = const_proxy_matrix_row<T, m, k>;
+    using col_vector = const_proxy_matrix_col<T, k, n>;
+    T res;
+    math::array_operations<row_vector, col_vector, k-1> op;
+    op.bfold(math::in_place_plus<T>(), std::multiplies<T>(), res, row, col);
+    return res;
+}
+/**
+ * Folds a matrix row with a matrix column (rvalue variant)
+ */
+template<class T, size_t m, size_t k, size_t n>
+T operator *
+(
+        const_proxy_matrix_row<T, m, k>&& row,
+        const_proxy_matrix_col<T, k, n>&& col)
+{
+    using row_vector = const_proxy_matrix_row<T, m, k>;
+    using col_vector = const_proxy_matrix_col<T, k, n>;
+    T res;
+    math::array_operations<row_vector, col_vector, k-1> op;
+    op.bfold(math::in_place_plus<T>(), std::multiplies<T>(), res, row, col);
+    return res;
 }
 
 /**
@@ -100,91 +187,165 @@ vector_c<T, m> operator * (const matrix_c<T, m, n>& A, const vector_c<T, n>& x)
     {
         const matrix& A_;
         const vector_row& x_;
-        size_t idx_row_;
+        vector_col& y_;
 
-        inline fold_matrix_row(const matrix& A, const vector_row& x)
+        inline fold_matrix_row
+                (
+                    const matrix& A,
+                    const vector_row& x,
+                    vector_col& y)
             :
-              A_(A), x_(x), idx_row_(0) {}
+              A_(A), x_(x), y_(y) {}
 
-        inline void operator()(T& y)
+        inline void operator()(size_t idx_row)
         {
-            y = A_[idx_row_++]*x_;
+            y_[idx_row] = A_[idx_row]*x_;
         }
-    } fold_row(A, x);
+    };
 
-    math::array_operations<vector_col, vector_col, m - 1> op;
-    op.umap(std::ref(fold_row), res);
+    math::For<0, m, true>().Do(fold_matrix_row(A, x, res));
 
     return res;
 }
 
-template<class T, size_t m, size_t n>
-vector_c<T, N> operator * (const vector_c<T, M>& v, const matrix_c<T, M, N>& m)
+/**
+ * Matrix multiplication
+ */
+template<class T, size_t m, size_t k, size_t n>
+matrix_c<T, m, n> operator *
+(
+        const matrix_c<T, m, k>& m1,
+        const matrix_c<T, k, n>& m2)
 {
-    vector_c<T, N> result(0.0);
-    matrix_c_op<T, M, N>().fold(in_place_plus<T>(), mul<T>(), v, m, result);
-    return result;
+    using lmatrix_type = matrix_c<T, m, k>;
+    using rmatrix_type = matrix_c<T, k, n>;
+    using result_type  = matrix_c<T, m, n>;
+    using result_row   = proxy_matrix_row<T, m, n>;
+
+    result_type res;
+
+    struct one_result_row
+    {
+        const lmatrix_type& m1_;
+        const rmatrix_type& m2_;
+        result_type& res_;
+        inline one_result_row
+                (
+                    const lmatrix_type& m1,
+                    const rmatrix_type& m2,
+                    result_type& res) : m1_(m1), m2_(m2), res_(res)
+        {}
+
+        inline void operator () (size_t row_idx)
+        {
+            struct one_result_elem
+            {
+                const lmatrix_type& m1_;
+                const rmatrix_type& m2_;
+                result_row res_;
+
+                inline one_result_elem
+                        (
+                            const lmatrix_type& m1,
+                            const rmatrix_type& m2,
+                            result_row res)
+                    :m1_(m1), m2_(m2), res_(res)
+                {}
+
+                inline void operator()(size_t col_idx)
+                {
+                    res_[col_idx] = m1_.row(res_.idx_row_) * m2_.column(col_idx);
+                }
+            };
+
+            math::For<0, n, true>()
+                    .Do(one_result_elem(m1_, m2_, res_.row(row_idx)));
+        }
+    };
+
+    math::For<0, m, true>().Do(one_result_row(m1, m2, res));
+
+    return res;
 }
 
-///**
-// * Matrix multiplication
-// */
-//template<class T, size_t M, size_t K, size_t N>
-//matrix_c<T, M, N> operator * (const matrix_c<T, M, K>& m1, const matrix_c<T, K, N>& m2)
-//{
-//    matrix_c<T, M, N> result(0.0);
-//    matrix_c_op<T, M, N>().fold(in_place_plus<T>(), mul<T>(), m1, m2, result);
-//    return result;
-//}
+/**
+ * Matrix division by a number
+ */
+template<class T, size_t m, size_t n>
+matrix_c<T, m, n>& operator /= (matrix_c<T, m, n>& M, const T& h)
+{
+    using row_type = vector_c<T, n>;
+    using matrix = matrix_c<T, m, n>;
+    DEF_OPERATION_WITH_VAL_1(T, row_type, /=);
+    math::array_operations<matrix, matrix, m-1> op;
+    op.umap(operation(h), M);
+    return M;
+}
+template<class T, size_t m, size_t n>
+matrix_c<T, m, n> operator / (const matrix_c<T, m, n>& M, const T& h)
+{
+    matrix_c<T, m, n> result(M);
+    return result /= h;
+}
 
-///**
-// * Matrix division by a number
-// */
-//template<class T, size_t M, size_t N>
-//matrix_c<T, M, N>& operator /= (matrix_c<T, M, N>& m, const T& h)
-//{
-//    matrix_c_op<T, M, N>().apply(in_place_div<T>(), m, h);
-//    return m;
-//}
-//template<class T, size_t M, size_t N>
-//matrix_c<T, M, N> operator / (const matrix_c<T, M, N>& m, const T& h)
-//{
-//    matrix_c<T, M, N> result(m);
-//    return result /= h;
-//}
+/**
+ * Matrix multiplication by a number
+ */
+template<class T, size_t m, size_t n>
+matrix_c<T, m, n>& operator *= (matrix_c<T, m, n>& M, const T& h)
+{
+    using row_type = vector_c<T, n>;
+    using matrix = matrix_c<T, m, n>;
+    DEF_OPERATION_WITH_VAL_1(T, row_type, *=);
+    math::array_operations<matrix, matrix, m-1> op;
+    op.umap(operation(h), M);
+    return M;
+}
+template<class T, size_t m, size_t n>
+matrix_c<T, m, n> operator * (const matrix_c<T, m, n>& M, const T& h)
+{
+    matrix_c<T, m, n> result(M);
+    return result *= h;
+}
+template<class T, size_t m, size_t n>
+matrix_c<T, m, n> operator * (const T& h, const matrix_c<T, m, n>& M)
+{
+    matrix_c<T, m, n> result(M);
+    return result *= h;
+}
 
-///**
-// * Matrix multiplication by a number
-// */
-//template<class T, size_t M, size_t N>
-//matrix_c<T, M, N>& operator *= (matrix_c<T, M, N>& m, const T& h)
-//{
-//    matrix_c_op<T, M, N>().apply(in_place_mul<T>(), m, h);
-//    return m;
-//}
-//template<class T, size_t M, size_t N>
-//matrix_c<T, M, N> operator * (const matrix_c<T, M, N>& m, const T& h)
-//{
-//    matrix_c<T, M, N> result(m);
-//    return result *= h;
-//}
-//template<class T, size_t M, size_t N>
-//matrix_c<T, M, N> operator * (const T& h, const matrix_c<T, M, N>& m)
-//{
-//    matrix_c<T, M, N> result(m);
-//    return result *= h;
-//}
+/**
+ * Matrix transposition
+ */
+template<class T, size_t m, size_t n>
+matrix_c<T, n, m> transpose(const matrix_c<T, m, n>& M)
+{
+    using matrix = matrix_c<T, m, n>;
+    using matrix_result = matrix_c<T, n, m>;
+    using row_vector = const_proxy_matrix_row<T, m, n>;
+    using col_vector = proxy_matrix_col<T, n, m>;
 
-///**
-// * Matrix transposition
-// */
-//template<class T, size_t M>
-//matrix_c<T, M, M> transpose(const matrix_c<T, M, M>& m)
-//{
-//    matrix_c<T, M, M> result(m);
-//    matrix_c_op<T, M, M>().transpose(result);
-//    return result;
-//}
+    matrix_result result;
+
+    struct set_elements
+    {
+        matrix_result& res_;
+        const matrix& M_;
+        inline set_elements(matrix_result& res, const matrix& M)
+            : res_(res), M_(M)
+        {}
+        inline void operator()(size_t res_row_idx)
+        {
+            math::array_operations<col_vector, row_vector, n-1> op;
+            col_vector col(res_, res_row_idx);
+            op.bmap(set_val<T>(), col, M_.row(res_row_idx));
+        }
+    };
+
+    math::For<0, m, true>().Do(set_elements(result, M));
+
+    return result;
+}
 
 ///**
 // * Calculates covariance matrix

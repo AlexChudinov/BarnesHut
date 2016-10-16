@@ -77,12 +77,43 @@ namespace math {
         }
     };
 
+    /**
+     * Templates implementing recursive for-loop
+     */
+    template<size_t begin, size_t end, bool stop> struct For;
+
+    template<size_t begin, size_t end>
+    struct For<begin, end, true>
+    {
+        using prior = For<begin + 1, end, (begin + 1) < end>;
+
+        template<class operation>
+        inline void Do(operation Op) const
+        {
+            Op(begin);
+            prior().Do(Op);
+        }
+    };
+
+    template<size_t begin, size_t end>
+    struct For<begin, end, false>
+    {
+        template<class operation>
+        inline void Do(operation /*Op*/) const{}
+    };
+
 //One value applicator to a hole array
 #define DEF_OPERATION_WITH_VAL(value_type, op) \
     struct operation{ \
         const value_type& val_;\
         inline operation(const value_type& val) : val_(val) {} \
         inline void operator()(value_type& x) const { x op val_; } \
+    };
+#define DEF_OPERATION_WITH_VAL_1(type1, type2, op)\
+    struct operation{ \
+        const type1& val_;\
+        inline operation(const type1& val) : val_(val) {} \
+        inline void operator()(type2& x) const { x op val_; } \
     };
 }
 
