@@ -347,34 +347,59 @@ matrix_c<T, n, m> transpose(const matrix_c<T, m, n>& M)
     return result;
 }
 
-///**
-// * Calculates covariance matrix
-//*/
-//template<class T, std::size_t N>
-//matrix_c<T, N, N> cov
-//(
-//        const vector<vector_c<T, N>>& vectors,
-//        const vector<T>& w
-//)
-//{
-//    assert(vectors.size() == w.size());
+/**
+* Calculates covariance matrix
+*/
+template<class T, std::size_t N>
+matrix_c<T, N, N> cov
+(
+        const vector<vector_c<T, N>>& vectors,
+        const vector<T>& w
+)
+{
+    using matrix   = matrix_c<T, N, N>;
+    using vector_c = vector_c<T, N>;
 
-//    matrix_c<T, N, N> covMatrix(0.0);
+    assert(vectors.size() == w.size());
 
-//    typename vector<T>::const_iterator it = w.begin();
+    matrix covMatrix(0.0);
+    size_t diag_idx = 0;
 
-//    T total = 0.0;
+    struct set_low_matrix_triangle
+    {
+        matrix& m_;
+        const vector_c& v_;
+        size_t& diag_idx_;
+        inline set_low_matrix_triangle(matrix& m, const vector_c& v, size_t& diag_idx)
+            : m_(m), v_(v), diag_idx_(diag_idx) {}
+        inline void operator()(size_t row_idx, T w)
+        {
+            m_[row_idx][diag_idx_] += w * v_[row_idx] * v_[diag_idx_];
+        }
+    };
 
-//    for (const vector_c<T, N>& v:vectors)
-//    {
-//        total += *it;
-//        matrix_c_op<T, N, N>().cov_matrix_diag(v, *(it++), covMatrix);
-//    }
+    struct set_diag_idx
+    {
+        size_t& diag_idx_;
+        inline set_diag_idx(size_t& diag_idx) : diag_idx_(diag_idx) {}
+        inline void operator()(size_t diag_idx){ diag_idx_ = diag_idx; }
+    };
 
-//    return (covMatrix/total) *
-//            static_cast<double>(w.size())
-//            /static_cast<double>(w.size()-1);
-//}
+    typename vector<T>::const_iterator it = w.begin();
+
+    T total = 0.0;
+
+    for (const vector_c& v:vectors)
+    {
+        total += *it;
+        math::For<0, N, true>()
+                .Do_for_triangle(set_diag_idx(diag_idx),set_low_matrix_triangle(covMatrix, v, diag_idx),*it);
+    }
+
+    return covMatrix;/*(covMatrix/total) *
+            static_cast<double>(w.size())
+            /static_cast<double>(w.size()-1);*/
+}
 
 ///**
 // * Calculates first principal component

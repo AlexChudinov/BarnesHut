@@ -85,21 +85,31 @@ namespace math {
     template<size_t begin, size_t end>
     struct For<begin, end, true>
     {
-        using prior = For<begin + 1, end, (begin + 1) < end>;
+        using next = For<begin + 1, end, (begin + 1) < end>;
 
-        template<class operation>
-        inline void Do(operation Op) const
+        template<class operation, typename ... T>
+        inline void Do(operation Op, T ... args) const
         {
-            Op(begin);
-            prior().Do(Op);
+            Op(begin, args...);
+            next().Do(Op);
+        }
+
+        template<class op1, class op2, typename ... T>
+        inline void Do_for_triangle(op1 Op1, op2 Op2, T ... args) const
+        {
+            Op1(begin);
+            For<begin, end, begin < end>().Do(Op2, args ...);
+            next().Do_for_triangle(Op1, Op2, args ...);
         }
     };
 
     template<size_t begin, size_t end>
     struct For<begin, end, false>
     {
-        template<class operation>
-        inline void Do(operation /*Op*/) const{}
+        template<class operation, typename ... T>
+        inline void Do(operation /*Op*/, T ...) const{}
+        template<class op1, class op2, typename ... T>
+        inline void Do_for_triangle(op1 /*Op1*/, op2 /*Op2*/, T ...) const{}
     };
 
 //One value applicator to a hole array
