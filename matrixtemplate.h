@@ -391,7 +391,7 @@ matrix_c<T, N, N> cov
 (
         const vector<vector_c<T, N>>& vectors,
         const vector<T>& w,
-        const vector_c<T, N>& v_mean = 0.0
+        const vector_c<T, N>& v_mean = vector_c<T, N>(0.0)
 )
 {
     using matrix   = matrix_c<T, N, N>;
@@ -400,57 +400,35 @@ matrix_c<T, N, N> cov
     assert(vectors.size() == w.size());
 
     matrix covMatrix(0.0);
-    size_t diag_idx = 0;
-
-    struct set_lower_matrix_triangle
-    {
-        matrix& m_;
-        const vector_c& v_;
-        size_t& diag_idx_;
-        inline set_lower_matrix_triangle(matrix& m, const vector_c& v, size_t& diag_idx)
-            : m_(m), v_(v), diag_idx_(diag_idx) {}
-        inline void operator()(size_t row_idx, T w)
-        {
-            m_[row_idx][diag_idx_] += w * v_[row_idx] * v_[diag_idx_];
-        }
-    };
-
-    struct set_upper_matrix_triangle
-    {
-        matrix& m_;
-        const vector_c& v_;
-        const size_t& diag_idx_;
-        inline set_upper_matrix_triangle(matrix& m, const vector_c& v, const size_t& diag_idx)
-            : m_(m), v_(v), diag_idx_(diag_idx) {}
-        inline void operator()(size_t row_idx)
-        {
-            m_[diag_idx_][row_idx] = m_[row_idx][diag_idx_];
-        }
-    };
-
-    struct set_diag_idx
-    {
-        size_t& diag_idx_;
-        inline set_diag_idx(size_t& diag_idx) : diag_idx_(diag_idx) {}
-        inline void operator()(size_t diag_idx){ diag_idx_ = diag_idx; }
-    };
-
-    typename vector<T>::const_iterator it = w.begin();
 
     T total = 0.0;
+    typename vector<T>::const_iterator it = w.begin();
 
-    for (const vector_c& v:vectors)
+    struct set_cov_matrix
+    {
+        matrix& m_;
+        const vector_c& v_;
+        T w_;
+
+        inline set_cov_matrix(matrix& m, const vector_c& v, T w) : m_(m), v_(v), w_(w){}
+
+        inline void operator()(size_t row_idx)
+        {
+            m_[row_idx][row_idx] += w_ * v_[row_idx] * v_[row_idx];
+            for(size_t col_idx = 0; col_idx < row_idx; ++col_idx)
+            {
+                m_[row_idx][col_idx] += w_ * v_[row_idx] * v_[col_idx];
+                m_[col_idx][row_idx] = m_[row_idx][col_idx];
+            }
+        }
+    };
+
+    for (const vector_c& v : vectors)
     {
         total += *it;
         vector_c vv = v - v_mean;
-        math::For<0, N, true>()
-                .Do_for_triangle(
-                    set_diag_idx(diag_idx),
-                    set_lower_matrix_triangle(covMatrix, vv, diag_idx),*it);
-        math::For<0, N, true>()
-                .Do_for_triangle(
-                    set_diag_idx(diag_idx),
-                    set_upper_matrix_triangle(covMatrix, vv, diag_idx));
+
+        math::For<0, N, true>().Do(set_cov_matrix(covMatrix, vv, *it));
     }
 
     return (covMatrix/total) *
@@ -461,7 +439,7 @@ matrix_c<T, N, N> cov
 /**
  * Calculates first principal component
  */
-template<class T, std::size_t N>
+template<class T, size_t N>
 vector_c<T, N> pc1
 (
         const vector<vector_c<T, N>>& vectors,
@@ -475,7 +453,7 @@ vector_c<T, N> pc1
 
     //Calculate cloud center
     vector_c v0(0.0);
-    math::mean(vectors, w, v0);
+    math::mean<vector_c, double, vector>(vectors, w, v0);
 
     //Make first approximation
     vector_c eigen_vector(0.0);
@@ -517,56 +495,32 @@ inline T det(const matrix_c<T, N, N>& m)
     using matrix = matrix_c<T, N, N>;
 
     matrix tri(m);
-    size_t row_num;
-    T coef;
 
-    struct set_column
+    struct matrix_triangulation_row
     {
         matrix& tri_;
-        const size_t& row_num_;
-        inline do_triangle
-                (
-                    matrix& tri,
-                    const size_t& row_num)
-            : tri_(tri), row_num_(row_num){}
-        inline void operator()(size_t col_num, const T& coef)
+        size_t nPerm_;
+
+        inline matrix_triangulation(matrix& tri)
+            : tri_(tri), nPerm_(0){}
+
+        inline void operator()(size_t row_idx0)
         {
-            tri_[row_num_][col_num] -= (coef*tri_[row_num_-1][col_num]);
+            T coef;
+            while(tri_[row_idx0][row_idx0] != 0.0) coef = 1./tri_[row_idx0][row_idx0];
+            else
+            {
+                std::swap(tri_[row_idx0_], tri_[row_idx0_+1]);
+                nPerm_++;
+            }
+            T coef = tri_[row_idx1][row_idx0_]*coef_;
+            tri_[row_idx1][row_idx0_] = 0.0;
+            for(size_t col_idx = row_idx0_ + 1; col_idx < N; ++col_idx)
+                tri_[row_idx1][col_idx] -= coef*tri_[row_idx0_][col_idx];
         }
     };
 
-    struct set_row
-    {
-        matrix& tri_;
-        size_t row_num_;
-        T& coef_;
-        inline set_row(matrix& tri, size_t row_num, T& coef)
-            : tri_(tri), row_num_(row_num), coef_(coef) {}
-        inline void operator()(size_t row_num1)
-        {
-            coef_ = tri_[row_num1][row_num_]/tri_[row_num_][row_num_];
-            tri_[row_num1][row_num_] = 0.0;
-        }
-    };
-
-    struct diag_prod
-    {
-        const matrix& m_;
-        inline diag_prod(const matrix& m) : m_(m) {}
-        inline void operator()(size_t diag_idx, T& res) const
-        {
-            res *= m_[diag_idx][diag_idx];
-        }
-    };
-
-    For<1, N, true>()
-            .Do_for_triangle(
-                set_row(tri,row_num,coef),
-                do_triangle(tri,row_num), std::cref(coef));
-
-    T result = 1.0;
-
-    For<0, N, true>().Do(diag_prod(tri),std::ref(result));
+    For<0, N, true>().Do(diag_prod(tri));
 
     return result;
 }

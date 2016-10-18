@@ -21,11 +21,11 @@ int main(int argc, char *argv[])
 
     using matrix = math::matrix_c<double, 3, 3>;
     using matrix1= math::matrix_c<double, 3, 4>;
-    using vector = math::vector_c<double, 3>;
+    using vector_c = math::vector_c<double, 3>;
 
     matrix m{{1.,2.,3.},{4.,5,6.},{7,8.,9}};
     matrix1 m1{{1.,2.,3.,4.},{5.,6.,7.,8.},{9.,10.,11.,12.}};
-    vector v{4., 1., 3.};
+    vector_c v{4., 1., 3.};
 
     //std::cout << math::solve(m,v) << std::endl;
     std::cout << ((v+v)*10.)/2. << std::endl;
@@ -34,16 +34,20 @@ int main(int argc, char *argv[])
     std::cout << math::transpose(10.*m) << std::endl;
     std::cout << (math::transpose(m1)*m) << std::endl;
 
-    std::vector<vector> vv{{1., 2., 3.}, {2., 13., 4.},
+    std::vector<vector_c> vv{{1., 2., 3.}, {2., 13., 4.},
                            {4., 15., 6.}, {6., 7., 8.}};
 
-    vector v0(0.0);
+    vector_c v0(0.0);
 
-    math::mean(vv,std::vector<double>{1,1,1,1},v0);
+    std::vector<double> w{1,1,1,1};
+
+    math::mean<vector_c, double, std::vector>(vv,w,v0);
+
+    std::cout << v0 << std::endl;
 
     std::cout << math::pc1(vv,{1.,1.,1.,1.}) << std::endl;
 
-    std::cout << math::det(m) << std::endl;
+    /*std::cout << math::det(m) << std::endl;*/
 
     return a.exec();
 }
