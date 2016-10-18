@@ -18,7 +18,7 @@ template <class Float> struct charge_approximation
 {
     typedef Float charge_type;
     typedef math::vector_c<Float, 3> position_type;
-    typedef math::matrix_c<Float, 3> matrix3D_type;
+    typedef math::matrix_c<Float, 3, 3> matrix3D_type;
 
     charge_type total_charge;
     position_type central_point;
@@ -44,7 +44,7 @@ class ChargeCloud
 {
     typedef Float charge_type;
     typedef math::vector_c<Float, 3> position_type;
-    typedef math::matrix_c<Float, 3> matrix3D_type;
+    typedef math::matrix_c<Float, 3, 3> matrix3D_type;
     typedef std::vector<charge_type> vector_of_charges_type;
     typedef std::vector<position_type> vector_of_positions_type;
     typedef data_structs::triple<charge_approximation<Float>, ChargeCloud> triple;

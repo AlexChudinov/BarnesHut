@@ -159,6 +159,9 @@ struct const_proxy_matrix_diag
     using matrix = matrix_c<T, M, N>;
     const matrix& A_;
     inline const_proxy_matrix_diag(const matrix& A) : A_(A){}
+    inline const_proxy_matrix_diag
+    (
+            const proxy_matrix_diag<T, M, N>& D):A_(D.A_){}
     inline const T& operator[](size_t diag_idx) const { return A_[diag_idx][diag_idx]; }
 };
 
@@ -493,36 +496,46 @@ template<class T, size_t N>
 inline T det(const matrix_c<T, N, N>& m)
 {
     using matrix = matrix_c<T, N, N>;
+    using trace  = const_proxy_matrix_diag<T, N, N>;
 
     matrix tri(m);
 
-    struct matrix_triangulation_row
+    struct matrix_triangulation
     {
         matrix& tri_;
-        size_t nPerm_;
+        int det_factor_;
 
         inline matrix_triangulation(matrix& tri)
-            : tri_(tri), nPerm_(0){}
+            : tri_(tri), det_factor_(1){}
 
-        inline void operator()(size_t row_idx0)
+        inline void operator()(size_t row)
         {
-            T coef;
-            while(tri_[row_idx0][row_idx0] != 0.0) coef = 1./tri_[row_idx0][row_idx0];
-            else
+            size_t next_row = row + 1;
+            while(tri_[row][row] == 0.0 && next_row < N)
             {
-                std::swap(tri_[row_idx0_], tri_[row_idx0_+1]);
-                nPerm_++;
+                std::swap(tri_[row], tri_[next_row++]);
+                det_factor_ = -det_factor_;
             }
-            T coef = tri_[row_idx1][row_idx0_]*coef_;
-            tri_[row_idx1][row_idx0_] = 0.0;
-            for(size_t col_idx = row_idx0_ + 1; col_idx < N; ++col_idx)
-                tri_[row_idx1][col_idx] -= coef*tri_[row_idx0_][col_idx];
+
+            if(next_row == N) det_factor_ = 0;
+
+            for(; next_row < N; ++next_row)
+            {
+                T coef = tri_[next_row][row]/tri_[row][row];
+                tri_[next_row][row] = 0.0;
+                for(size_t col = row + 1; col < N; ++col)
+                    tri_[next_row][col] -= coef*tri_[row][col];
+            }
         }
     };
 
-    For<0, N, true>().Do(diag_prod(tri));
+    matrix_triangulation do_tri(tri);
+    For<0, N-1, true>().Do(do_tri);
+    double res = static_cast<double>(do_tri.det_factor_);
+    math::array_operations<trace, trace, N-1> op;
+    op.ufold(math::in_place_mul<T>(), res, tri.diag());
 
-    return result;
+    return res;
 }
 
 ///**
