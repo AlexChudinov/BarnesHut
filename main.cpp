@@ -34,9 +34,16 @@ int main(int argc, char *argv[])
     std::cout << math::transpose(10.*m) << std::endl;
     std::cout << (math::transpose(m1)*m) << std::endl;
 
-    std::vector<vector> vv{{1., 2., 3.}, {2., 3., 4.}, {4., 5., 6.}, {6., 7., 8.}};
+    std::vector<vector> vv{{1., 2., 3.}, {2., 13., 4.},
+                           {4., 15., 6.}, {6., 7., 8.}};
 
-    std::cout << math::cov(vv,{1, 1, 1, 1}) << std::endl;
+    vector v0(0.0);
+
+    math::mean(vv,std::vector<double>{1,1,1,1},v0);
+
+    std::cout << math::pc1(vv,{1.,1.,1.,1.}) << std::endl;
+
+    std::cout << math::det(m) << std::endl;
 
     return a.exec();
 }

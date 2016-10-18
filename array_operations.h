@@ -91,7 +91,7 @@ namespace math {
         inline void Do(operation Op, T ... args) const
         {
             Op(begin, args...);
-            next().Do(Op);
+            next().Do(Op, args...);
         }
 
         template<class op1, class op2, typename ... T>

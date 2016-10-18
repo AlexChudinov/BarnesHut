@@ -19,6 +19,8 @@ template<class T, size_t m, size_t n> struct proxy_matrix_row;
 template<class T, size_t m, size_t n> struct const_proxy_matrix_row;
 template<class T, size_t m, size_t n> struct proxy_matrix_col;
 template<class T, size_t m, size_t n> struct const_proxy_matrix_col;
+template<class T, size_t M, size_t N> struct proxy_matrix_diag;
+template<class T, size_t M, size_t N> struct const_proxy_matrix_diag;
 
 template <class T, size_t m, size_t n>
 struct matrix_c : vector_c<vector_c<T, n>, m>
@@ -41,9 +43,13 @@ struct matrix_c : vector_c<vector_c<T, n>, m>
 
     inline proxy_matrix_row<T, m, n> row(size_t idx_row);
 
+    inline proxy_matrix_diag<T, m, n> diag();
+
     inline const_proxy_matrix_col<T, m, n> column(size_t idx_col) const;
 
     inline const_proxy_matrix_row<T, m, n> row(size_t idx_row) const;
+
+    inline const_proxy_matrix_diag<T, m, n> diag() const;
 };
 
 template<class T, size_t m, size_t n>
@@ -79,13 +85,13 @@ struct const_proxy_matrix_col
     { return A_[idx_row][idx_col_]; }
 };
 
-template<class T, size_t m, size_t n>
+template<class T, size_t m, size_t n> inline
 proxy_matrix_col<T, m, n> matrix_c<T, m, n>::column(size_t idx_col)
 {
     return proxy_matrix_col<T, m, n>(*this, idx_col);
 }
 
-template<class T, size_t m, size_t n>
+template<class T, size_t m, size_t n> inline
 const_proxy_matrix_col<T, m, n> matrix_c<T, m, n>::column(size_t idx_col) const
 {
     return const_proxy_matrix_col<T, m, n>(*this, idx_col);
@@ -126,16 +132,46 @@ struct const_proxy_matrix_row
     { return A_[idx_row_][idx_col]; }
 };
 
-template<class T, size_t m, size_t n>
+template<class T, size_t m, size_t n> inline
 proxy_matrix_row<T, m, n> matrix_c<T, m, n>::row(size_t idx_row)
 {
     return proxy_matrix_row<T, m, n>(*this, idx_row);
 }
 
-template<class T, size_t m, size_t n>
+template<class T, size_t m, size_t n> inline
 const_proxy_matrix_row<T, m, n> matrix_c<T, m, n>::row(size_t idx_row) const
 {
     return const_proxy_matrix_row<T, m, n>(*this, idx_row);
+}
+
+template<class T, size_t M, size_t N>
+struct proxy_matrix_diag
+{
+    using matrix = matrix_c<T, M, N>;
+    matrix& A_;
+    inline proxy_matrix_diag(matrix& A) : A_(A){}
+    inline T& operator[](size_t diag_idx){ return A_[diag_idx][diag_idx]; }
+};
+
+template<class T, size_t M, size_t N>
+struct const_proxy_matrix_diag
+{
+    using matrix = matrix_c<T, M, N>;
+    const matrix& A_;
+    inline const_proxy_matrix_diag(const matrix& A) : A_(A){}
+    inline const T& operator[](size_t diag_idx) const { return A_[diag_idx][diag_idx]; }
+};
+
+template<class T, size_t M, size_t N> inline
+proxy_matrix_diag<T, M, N> matrix_c<T, M, N>::diag()
+{
+    return proxy_matrix_diag<T, M, N>(*this);
+}
+
+template<class T, size_t M, size_t N> inline
+const_proxy_matrix_diag<T, M, N> matrix_c<T, M, N>::diag() const
+{
+    return const_proxy_matrix_diag<T, M, N>(*this);
 }
 
 /**
@@ -149,7 +185,7 @@ T operator *
 {
     using row_vector = const_proxy_matrix_row<T, m, k>;
     using col_vector = const_proxy_matrix_col<T, k, n>;
-    T res;
+    T res(0.0);
     math::array_operations<row_vector, col_vector, k-1> op;
     op.bfold(math::in_place_plus<T>(), std::multiplies<T>(), res, row, col);
     return res;
@@ -165,7 +201,7 @@ T operator *
 {
     using row_vector = const_proxy_matrix_row<T, m, k>;
     using col_vector = const_proxy_matrix_col<T, k, n>;
-    T res;
+    T res(0.0);
     math::array_operations<row_vector, col_vector, k-1> op;
     op.bfold(math::in_place_plus<T>(), std::multiplies<T>(), res, row, col);
     return res;
@@ -181,7 +217,7 @@ vector_c<T, m> operator * (const matrix_c<T, m, n>& A, const vector_c<T, n>& x)
     using vector_row = vector_c<T, n>;
     using vector_col = vector_c<T, m>;
 
-    vector_col res;
+    vector_col res(0.0);
 
     struct fold_matrix_row
     {
@@ -222,7 +258,7 @@ matrix_c<T, m, n> operator *
     using result_type  = matrix_c<T, m, n>;
     using result_row   = proxy_matrix_row<T, m, n>;
 
-    result_type res;
+    result_type res(0.0);
 
     struct one_result_row
     {
@@ -354,7 +390,8 @@ template<class T, std::size_t N>
 matrix_c<T, N, N> cov
 (
         const vector<vector_c<T, N>>& vectors,
-        const vector<T>& w
+        const vector<T>& w,
+        const vector_c<T, N>& v_mean = 0.0
 )
 {
     using matrix   = matrix_c<T, N, N>;
@@ -365,16 +402,29 @@ matrix_c<T, N, N> cov
     matrix covMatrix(0.0);
     size_t diag_idx = 0;
 
-    struct set_low_matrix_triangle
+    struct set_lower_matrix_triangle
     {
         matrix& m_;
         const vector_c& v_;
         size_t& diag_idx_;
-        inline set_low_matrix_triangle(matrix& m, const vector_c& v, size_t& diag_idx)
+        inline set_lower_matrix_triangle(matrix& m, const vector_c& v, size_t& diag_idx)
             : m_(m), v_(v), diag_idx_(diag_idx) {}
         inline void operator()(size_t row_idx, T w)
         {
             m_[row_idx][diag_idx_] += w * v_[row_idx] * v_[diag_idx_];
+        }
+    };
+
+    struct set_upper_matrix_triangle
+    {
+        matrix& m_;
+        const vector_c& v_;
+        const size_t& diag_idx_;
+        inline set_upper_matrix_triangle(matrix& m, const vector_c& v, const size_t& diag_idx)
+            : m_(m), v_(v), diag_idx_(diag_idx) {}
+        inline void operator()(size_t row_idx)
+        {
+            m_[diag_idx_][row_idx] = m_[row_idx][diag_idx_];
         }
     };
 
@@ -392,74 +442,134 @@ matrix_c<T, N, N> cov
     for (const vector_c& v:vectors)
     {
         total += *it;
+        vector_c vv = v - v_mean;
         math::For<0, N, true>()
-                .Do_for_triangle(set_diag_idx(diag_idx),set_low_matrix_triangle(covMatrix, v, diag_idx),*it);
+                .Do_for_triangle(
+                    set_diag_idx(diag_idx),
+                    set_lower_matrix_triangle(covMatrix, vv, diag_idx),*it);
+        math::For<0, N, true>()
+                .Do_for_triangle(
+                    set_diag_idx(diag_idx),
+                    set_upper_matrix_triangle(covMatrix, vv, diag_idx));
     }
 
-    return covMatrix;/*(covMatrix/total) *
+    return (covMatrix/total) *
             static_cast<double>(w.size())
-            /static_cast<double>(w.size()-1);*/
+            /static_cast<double>(w.size()-1);
 }
 
-///**
-// * Calculates first principal component
-// */
-//template<class T, std::size_t N>
-//vector_c<T, N> pc1
-//(
-//        const vector<vector_c<T, N>>& vectors,
-//        const vector<T>& w,
-//        T relTol = 1.0e-10,
-//        size_t maxItter = 1000
-//)
-//{
-//    typedef vector_c<T, N> vector_type;
-//    typedef matrix_c<T, N, N> matrix_type;
+/**
+ * Calculates first principal component
+ */
+template<class T, std::size_t N>
+vector_c<T, N> pc1
+(
+        const vector<vector_c<T, N>>& vectors,
+        const vector<T>& w,
+        T relTol = 1.0e-10,
+        size_t maxItter = 1000
+)
+{
+    using vector_c = vector_c<T, N>;
+    using matrix = matrix_c<T, N, N>;
 
-//    //Make first approximation
-//    vector_type eigen_vector(0.0);
-//    typename vector<T>::const_iterator it = w.begin();
-//    for(const vector_type& v : vectors)
-//    {
-//        if (eigen_vector*v < 0.0)
-//            eigen_vector -= (v*v)*v * *(it++);
-//        else
-//            eigen_vector += (v*v)*v * *(it++);
-//    }
+    //Calculate cloud center
+    vector_c v0(0.0);
+    math::mean(vectors, w, v0);
 
-//    if(abs(eigen_vector) == 0) return eigen_vector;
-//    eigen_vector /= abs(eigen_vector);
+    //Make first approximation
+    vector_c eigen_vector(0.0);
+    typename vector<T>::const_iterator it = w.begin();
+    for(const vector_c& v : vectors)
+    {
+        vector_c vv = v - v0;
+        if (eigen_vector*vv < 0.0)
+            eigen_vector -= (vv*vv)*vv * *(it++);
+        else
+            eigen_vector += (vv*vv)*vv * *(it++);
+    }
 
-//    matrix_type covMatrix = cov(vectors,w);
-//    eigen_vector = covMatrix * eigen_vector;
-//    T disp0, disp1 = abs(eigen_vector);
-//    size_t iter = 0;
-//    do
-//    {
-//        disp0 = disp1;
-//        eigen_vector /= disp1;
-//        eigen_vector = covMatrix * eigen_vector;
-//        disp1 = abs(eigen_vector);
-//    } while(std::fabs(disp1-disp0)/disp0 > relTol
-//            && (++iter) != maxItter);
+    if(abs(eigen_vector) == 0) return eigen_vector;
+    eigen_vector /= abs(eigen_vector);
 
-//    return eigen_vector;
-//}
+    matrix covMatrix = cov(vectors, w, v0);
+    eigen_vector = covMatrix * eigen_vector;
+    T disp0, disp1 = abs(eigen_vector);
+    size_t iter = 0;
+    do
+    {
+        disp0 = disp1;
+        eigen_vector /= disp1;
+        eigen_vector = covMatrix * eigen_vector;
+        disp1 = abs(eigen_vector);
+    } while(std::fabs(disp1-disp0)/disp0 > relTol
+            && (++iter) != maxItter);
 
-///**
-// * Matrix determinant, test function
-// */
-//template<class T, size_t N>
-//inline T det(const matrix_c<T, N, N>& m)
-//{
-//    matrix_c<T, N, N> _tm(m);
-//    T result = 1.0;
-//    if(matrix_c_op<T, N, N>().tri(_tm) == N)
-//        matrix_c_op<T, N, N>().fold_diag
-//                (in_place_mul<T>(),_tm,result);
-//    else result = 0.0;
-//    return result;
-//}
+    return eigen_vector;
+}
+
+/**
+ * Matrix determinant
+ */
+template<class T, size_t N>
+inline T det(const matrix_c<T, N, N>& m)
+{
+    using matrix = matrix_c<T, N, N>;
+
+    matrix tri(m);
+    size_t row_num;
+    T coef;
+
+    struct set_column
+    {
+        matrix& tri_;
+        const size_t& row_num_;
+        inline do_triangle
+                (
+                    matrix& tri,
+                    const size_t& row_num)
+            : tri_(tri), row_num_(row_num){}
+        inline void operator()(size_t col_num, const T& coef)
+        {
+            tri_[row_num_][col_num] -= (coef*tri_[row_num_-1][col_num]);
+        }
+    };
+
+    struct set_row
+    {
+        matrix& tri_;
+        size_t row_num_;
+        T& coef_;
+        inline set_row(matrix& tri, size_t row_num, T& coef)
+            : tri_(tri), row_num_(row_num), coef_(coef) {}
+        inline void operator()(size_t row_num1)
+        {
+            coef_ = tri_[row_num1][row_num_]/tri_[row_num_][row_num_];
+            tri_[row_num1][row_num_] = 0.0;
+        }
+    };
+
+    struct diag_prod
+    {
+        const matrix& m_;
+        inline diag_prod(const matrix& m) : m_(m) {}
+        inline void operator()(size_t diag_idx, T& res) const
+        {
+            res *= m_[diag_idx][diag_idx];
+        }
+    };
+
+    For<1, N, true>()
+            .Do_for_triangle(
+                set_row(tri,row_num,coef),
+                do_triangle(tri,row_num), std::cref(coef));
+
+    T result = 1.0;
+
+    For<0, N, true>().Do(diag_prod(tri),std::ref(result));
+
+    return result;
+}
 
 ///**
 // * Solves a linear equation system Ax=b,

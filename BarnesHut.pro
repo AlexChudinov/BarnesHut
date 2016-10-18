@@ -21,4 +21,4 @@ HEADERS += \
     binarytree.h \
     array_operations.h
 
-INCLUDEPATH += D:/boost_1_62_0
+INCLUDEPATH += С:/boost_1_61_0
