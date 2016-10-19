@@ -21,6 +21,7 @@ template<class T, size_t m, size_t n> struct proxy_matrix_col;
 template<class T, size_t m, size_t n> struct const_proxy_matrix_col;
 template<class T, size_t M, size_t N> struct proxy_matrix_diag;
 template<class T, size_t M, size_t N> struct const_proxy_matrix_diag;
+template<class T, size_t M, size_t N> struct complement_proxy_matrix;
 
 template <class T, size_t m, size_t n>
 struct matrix_c : vector_c<vector_c<T, n>, m>
@@ -50,12 +51,43 @@ struct matrix_c : vector_c<vector_c<T, n>, m>
     inline const_proxy_matrix_row<T, m, n> row(size_t idx_row) const;
 
     inline const_proxy_matrix_diag<T, m, n> diag() const;
+
+    /**
+     * Algebraic complement
+     */
+    inline complement_proxy_matrix<T, m, n> complement(size_t r, size_t c);
 };
 
-template<class T, size_t m, size_t n>
+template<class T, size_t M, size_t N>
+struct complement_proxy_matrix
+{
+    using matrix = matrix_c<T, M, N>;
+    matrix& A_;
+    size_t row_idx_, col_idx_;
+
+    inline complement_proxy_matrix(matrix& A, size_t r, size_t c)
+        :
+          A_(A), row_idx_(r), col_idx_(c)
+    {
+        assert(r < M && c < N);
+    }
+
+    inline T& operator()(size_t r, size_t c)
+    {
+        size_t i,j;
+        i = r < row_idx_ ? r : r+1;
+        j = c < col_idx_ ? c : c+1;
+        return A_[i][j];
+    }
+};
+
+template<class T, size_t M, size_t N>
 struct proxy_matrix_col
 {
-    using matrix = matrix_c<T, m, n>;
+    using matrix = matrix_c<T, M, N>;
+    using const_col = const_proxy_matrix_col<T, M, N>;
+    using vector = vector_c<T, M>;
+
     matrix& A_;
     size_t idx_col_;
 
@@ -64,6 +96,28 @@ struct proxy_matrix_col
           A_(A), idx_col_(idx_col){}
 
     inline T& operator[](size_t idx_row){ return A_[idx_row][idx_col_]; }
+
+    inline proxy_matrix_col& operator=(const proxy_matrix_col& c)
+    {
+        math::array_operations
+                <proxy_matrix_col, proxy_matrix_col, M-1> op;
+        op.bmap(math::set_val<T>(), *this, c);
+        return *this;
+    }
+
+    inline proxy_matrix_col& operator=(const const_col& c)
+    {
+        math::array_operations<proxy_matrix_col, const_col, M-1> op;
+        op.bmap(math::set_val<T>(), *this, c);
+        return *this;
+    }
+
+    inline proxy_matrix_col& operator=(const vector& c)
+    {
+        math::array_operations<proxy_matrix_col, vector, M-1> op;
+        op.bmap(math::set_val<T>(), *this, c);
+        return *this;
+    }
 };
 
 template<class T, size_t m, size_t n>
@@ -97,10 +151,13 @@ const_proxy_matrix_col<T, m, n> matrix_c<T, m, n>::column(size_t idx_col) const
     return const_proxy_matrix_col<T, m, n>(*this, idx_col);
 }
 
-template<class T, size_t m, size_t n>
+template<class T, size_t M, size_t N>
 struct proxy_matrix_row
 {
-    using matrix = matrix_c<T, m, n>;
+    using matrix = matrix_c<T, M, N>;
+    using vector = vector_c<T, N>;
+    using const_row = const_proxy_matrix_row<T, M, N>;
+
     matrix& A_;
     size_t idx_row_;
 
@@ -109,6 +166,27 @@ struct proxy_matrix_row
           A_(A), idx_row_(idx_row){}
 
     inline T& operator[](size_t idx_col){ return A_[idx_row_][idx_col]; }
+
+    inline proxy_matrix_row& operator=(const proxy_matrix_row& r)
+    {
+        math::array_operations<proxy_matrix_row, proxy_matrix_row, M-1> op;
+        op.bmap(math::set_val<T>(),*this,r);
+        return *this;
+    }
+
+    inline proxy_matrix_row& operator=(const const_row& r)
+    {
+        math::array_operations<proxy_matrix_row, const_row, M-1> op;
+        op.bmap(math::set_val<T>(),*this,r);
+        return *this;
+    }
+
+    inline proxy_matrix_row& operator=(const vector& v)
+    {
+        math::array_operations<proxy_matrix_row, vector, M-1> op;
+        op.bmap(math::set_val<T>(), *this, v);
+        return *this;
+    }
 };
 
 template<class T, size_t m, size_t n>
@@ -538,23 +616,31 @@ inline T det(const matrix_c<T, N, N>& m)
     return res;
 }
 
-///**
-// * Solves a linear equation system Ax=b,
-// * returns a rank of matrix A. If it is smaller
-// * than a size of A then x is unidentified
-// */
-//template<class T, size_t N>
-//inline vector_c<T, N> solve
-//(
-//        const matrix_c<T, N, N>& A,
-//        const vector_c<T, N>& b)
-//{
-//    vector_c<T, N> x = b;
-//    matrix_c<T, N, N> _tA(A);
-//    matrix_c_op<T, N, N>().tri(_tA, x);
-//    matrix_c_op<T, N, N>().backward_gauss_sweep(_tA, x);
-//    return x;
-//}
+/**
+ * Solves a linear equation system Ax=b,
+ * VarNum is an index in the x array
+ * determinant should be previously estimated
+ */
+template<class T, size_t N, size_t VarNum>
+inline T solve
+(
+        const matrix_c<T, N, N>& A,
+        const vector_c<T, N>& b,
+        const T& D)
+{
+    static_assert(N > VarNum, "Index of a variable is too big");
+
+    using matrix = matrix_c<T, N, N>;
+
+    matrix A_b;
+
+    for(size_t i = 0; i < VarNum; ++i) A_b.column(i) = A.column(i);
+    for(size_t i = VarNum + 1; i < N; ++i) A_b.column(i) = A.column(i);
+
+    A_b.column(VarNum) = b;
+
+    return math::det(A_b)/D;
+}
 
 }
 
