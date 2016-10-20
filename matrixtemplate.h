@@ -484,32 +484,20 @@ matrix_c<T, N, N> cov
 
     T total = 0.0;
     typename vector<T>::const_iterator it = w.begin();
-
-    struct set_cov_matrix
-    {
-        matrix& m_;
-        const vector_c& v_;
-        T w_;
-
-        inline set_cov_matrix(matrix& m, const vector_c& v, T w) : m_(m), v_(v), w_(w){}
-
-        inline void operator()(size_t row_idx)
-        {
-            m_[row_idx][row_idx] += w_ * v_[row_idx] * v_[row_idx];
-            for(size_t col_idx = 0; col_idx < row_idx; ++col_idx)
-            {
-                m_[row_idx][col_idx] += w_ * v_[row_idx] * v_[col_idx];
-                m_[col_idx][row_idx] = m_[row_idx][col_idx];
-            }
-        }
-    };
-
     for (const vector_c& v : vectors)
     {
         total += *it;
         vector_c vv = v - v_mean;
 
-        math::For<0, N, true>().Do(set_cov_matrix(covMatrix, vv, *it));
+        math::For<0, N, true>().Do([&covMatrix,vv,it](size_t row_idx)->void
+        {
+            covMatrix[row_idx][row_idx] += *it * vv[row_idx] * vv[row_idx];
+            for(size_t col_idx = 0; col_idx < row_idx; ++col_idx)
+            {
+                covMatrix[row_idx][col_idx] += *it * vv[row_idx] * vv[col_idx];
+                covMatrix[col_idx][row_idx] = covMatrix[row_idx][col_idx];
+            }
+        });
     }
 
     return (covMatrix/total) *
