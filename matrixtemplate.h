@@ -571,45 +571,33 @@ vector_c<T, N> pc1
  * Matrix determinant
  */
 template<class T, size_t N>
-inline T det(const matrix_c<T, N, N>& m)
+inline T  det(const matrix_c<T, N, N>& m)
 {
     using matrix = matrix_c<T, N, N>;
     using trace  = const_proxy_matrix_diag<T, N, N>;
 
     matrix tri(m);
+    int det_factor = 1;
 
-    struct matrix_triangulation
+    auto matrix_triangulation = [&tri, &det_factor](size_t row)->void
     {
-        matrix& tri_;
-        int det_factor_;
-
-        inline matrix_triangulation(matrix& tri)
-            : tri_(tri), det_factor_(1){}
-
-        inline void operator()(size_t row)
+        size_t next_row = row + 1;
+        while(tri[row][row] == 0.0 && next_row < N)
         {
-            size_t next_row = row + 1;
-            while(tri_[row][row] == 0.0 && next_row < N)
-            {
-                std::swap(tri_[row], tri_[next_row++]);
-                det_factor_ = -det_factor_;
-            }
-
-            if(next_row == N) det_factor_ = 0;
-
-            for(; next_row < N; ++next_row)
-            {
-                T coef = tri_[next_row][row]/tri_[row][row];
-                tri_[next_row][row] = 0.0;
-                for(size_t col = row + 1; col < N; ++col)
-                    tri_[next_row][col] -= coef*tri_[row][col];
-            }
+            std::swap(tri[row], tri[next_row++]);
+            det_factor = - det_factor;
+        }
+        for(; next_row < N; ++next_row)
+        {
+            T coef = tri[next_row][row]/tri[row][row];
+            tri[next_row][row] = 0.0;
+            for(size_t col = row + 1; col < N; ++col)
+                tri[next_row][col] -= coef*tri[row][col];
         }
     };
 
-    matrix_triangulation do_tri(tri);
-    For<0, N-1, true>().Do(do_tri);
-    double res = static_cast<double>(do_tri.det_factor_);
+    For<0, N-1, true>().Do(matrix_triangulation);
+    double res = static_cast<double>(det_factor);
     math::array_operations<trace, trace, N-1> op;
     op.ufold(math::in_place_mul<T>(), res, tri.diag());
 
