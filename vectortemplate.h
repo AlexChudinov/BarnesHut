@@ -131,6 +131,18 @@ vector_c<T, N>& operator -= (vector_c<T, N>& vl, const vector_c<T, N>& vr)
 }
 
 /**
+ * Vector-number in place subtraction
+ */
+template<class T, size_t N> inline
+vector_c<T, N>& operator-=(vector_c<T, N>& vl, const T& h)
+{
+    using type = typename vector_c<T, N>::type;
+    math::array_operations<type, type, N - 1> op;
+    op.umap([h](T& val){ val -= h; }, vl);
+    return vl;
+}
+
+/**
  * vector subtraction
  */
 template<class T, size_t N> inline
